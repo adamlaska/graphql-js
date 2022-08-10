@@ -1,12 +1,4 @@
-'use strict';
-
-Object.defineProperty(exports, '__esModule', {
-  value: true,
-});
-exports.NoUnusedFragmentsRule = NoUnusedFragmentsRule;
-
-var _GraphQLError = require('../../error/GraphQLError.js');
-
+import { GraphQLError } from '../../error/GraphQLError.js';
 /**
  * No unused fragments
  *
@@ -15,41 +7,31 @@ var _GraphQLError = require('../../error/GraphQLError.js');
  *
  * See https://spec.graphql.org/draft/#sec-Fragments-Must-Be-Used
  */
-function NoUnusedFragmentsRule(context) {
-  const operationDefs = [];
+export function NoUnusedFragmentsRule(context) {
+  const fragmentNameUsed = new Set();
   const fragmentDefs = [];
   return {
-    OperationDefinition(node) {
-      operationDefs.push(node);
+    OperationDefinition(operation) {
+      for (const fragment of context.getRecursivelyReferencedFragments(
+        operation,
+      )) {
+        fragmentNameUsed.add(fragment.name.value);
+      }
       return false;
     },
-
     FragmentDefinition(node) {
       fragmentDefs.push(node);
       return false;
     },
-
     Document: {
       leave() {
-        const fragmentNameUsed = Object.create(null);
-
-        for (const operation of operationDefs) {
-          for (const fragment of context.getRecursivelyReferencedFragments(
-            operation,
-          )) {
-            fragmentNameUsed[fragment.name.value] = true;
-          }
-        }
-
         for (const fragmentDef of fragmentDefs) {
           const fragName = fragmentDef.name.value;
-
-          if (fragmentNameUsed[fragName] !== true) {
+          if (!fragmentNameUsed.has(fragName)) {
             context.reportError(
-              new _GraphQLError.GraphQLError(
-                `Fragment "${fragName}" is never used.`,
-                fragmentDef,
-              ),
+              new GraphQLError(`Fragment "${fragName}" is never used.`, {
+                nodes: fragmentDef,
+              }),
             );
           }
         }
