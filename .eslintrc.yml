@@ -38,7 +38,7 @@ rules:
   node/no-exports-assign: error
   node/no-extraneous-import: error
   node/no-extraneous-require: error
-  node/no-missing-import: [error, { allowModules: ['graphql'] }]
+  node/no-missing-import: off # Blocked by https://github.com/mysticatea/eslint-plugin-node/issues/248
   node/no-missing-require: error
   node/no-new-require: error
   node/no-path-concat: error
@@ -84,7 +84,7 @@ rules:
 
   # Static analysis
   # https://github.com/benmosher/eslint-plugin-import#static-analysis
-  import/no-unresolved: [error, { ignore: ['graphql'] }]
+  import/no-unresolved: off # blocked by https://github.com/import-js/eslint-plugin-import/issues/2170
   import/named: error
   import/default: error
   import/namespace: error
@@ -130,7 +130,6 @@ rules:
   import/extensions:
     - error
     - ignorePackages
-    - ts: never # TODO: remove once TS supports extensions
   import/order: [error, { newlines-between: always-and-inside-groups }]
   import/newline-after-import: error
   import/prefer-default-export: off
@@ -144,7 +143,7 @@ rules:
   import/dynamic-import-chunkname: off
 
   ##############################################################################
-  # `eslint-plugin-simple-import-sort` rule list based on `v2.25.x`
+  # `eslint-plugin-simple-import-sort` rule list based on `v8.0.x`
   # https://github.com/lydell/eslint-plugin-simple-import-sort
   ##############################################################################
   simple-import-sort/imports:
@@ -179,7 +178,7 @@ rules:
   simple-import-sort/exports: off # TODO
 
   ##############################################################################
-  # ESLint builtin rules list based on `v8.21.x`
+  # ESLint builtin rules list based on `v8.23.x`
   ##############################################################################
 
   # Possible Errors
@@ -474,6 +473,10 @@ rules:
   yield-star-spacing: off
 
 overrides:
+  - files:
+      - 'integrationTests/node-esm/**/*.js'
+    parserOptions:
+      sourceType: module
   - files: '**/*.ts'
     parser: '@typescript-eslint/parser'
     parserOptions:
@@ -493,7 +496,7 @@ overrides:
       tsdoc/syntax: error
 
       ##########################################################################
-      # `@typescript-eslint/eslint-plugin` rule list based on `v5.33.x`
+      # `@typescript-eslint/eslint-plugin` rule list based on `v5.37.x`
       ##########################################################################
 
       # Supported Rules
@@ -696,8 +699,11 @@ overrides:
       node: true
     rules:
       node/no-sync: off
+      node/no-extraneous-import: [error, { allowModules: ['graphql'] }]
       import/no-unresolved: off
+      import/no-namespace: off
       import/no-nodejs-modules: off
+      import/no-extraneous-dependencies: off
   - files: 'resources/**'
     env:
       node: true
@@ -735,7 +741,6 @@ overrides:
         version: detect
     rules:
       node/no-unpublished-require: off
-      node/no-missing-import: off
       import/no-default-export: off
       import/no-commonjs: off
       import/no-nodejs-modules: off

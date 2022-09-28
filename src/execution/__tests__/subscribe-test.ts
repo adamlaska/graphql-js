@@ -1,25 +1,33 @@
 import { assert, expect } from 'chai';
 import { describe, it } from 'mocha';
 
-import { expectEqualPromisesOrValues } from '../../__testUtils__/expectEqualPromisesOrValues';
-import { expectJSON } from '../../__testUtils__/expectJSON';
-import { expectPromise } from '../../__testUtils__/expectPromise';
-import { resolveOnNextTick } from '../../__testUtils__/resolveOnNextTick';
+import { expectEqualPromisesOrValues } from '../../__testUtils__/expectEqualPromisesOrValues.js';
+import { expectJSON } from '../../__testUtils__/expectJSON.js';
+import { expectPromise } from '../../__testUtils__/expectPromise.js';
+import { resolveOnNextTick } from '../../__testUtils__/resolveOnNextTick.js';
 
-import { isAsyncIterable } from '../../jsutils/isAsyncIterable';
-import { isPromise } from '../../jsutils/isPromise';
-import type { PromiseOrValue } from '../../jsutils/PromiseOrValue';
+import { isAsyncIterable } from '../../jsutils/isAsyncIterable.js';
+import { isPromise } from '../../jsutils/isPromise.js';
+import type { PromiseOrValue } from '../../jsutils/PromiseOrValue.js';
 
-import { parse } from '../../language/parser';
+import { parse } from '../../language/parser.js';
 
-import { GraphQLList, GraphQLObjectType } from '../../type/definition';
-import { GraphQLBoolean, GraphQLInt, GraphQLString } from '../../type/scalars';
-import { GraphQLSchema } from '../../type/schema';
+import { GraphQLList, GraphQLObjectType } from '../../type/definition.js';
+import {
+  GraphQLBoolean,
+  GraphQLInt,
+  GraphQLString,
+} from '../../type/scalars.js';
+import { GraphQLSchema } from '../../type/schema.js';
 
-import type { ExecutionArgs, ExecutionResult } from '../execute';
-import { createSourceEventStream, subscribe } from '../execute';
+import type { ExecutionArgs, ExecutionResult } from '../execute.js';
+import {
+  createSourceEventStream,
+  experimentalSubscribeIncrementally,
+  subscribe,
+} from '../execute.js';
 
-import { SimplePubSub } from './simplePubSub';
+import { SimplePubSub } from './simplePubSub.js';
 
 interface Email {
   from: string;
@@ -33,6 +41,10 @@ const EmailType = new GraphQLObjectType({
   fields: {
     from: { type: GraphQLString },
     subject: { type: GraphQLString },
+    asyncSubject: {
+      type: GraphQLString,
+      resolve: (email) => Promise.resolve(email.subject),
+    },
     message: { type: GraphQLString },
     unread: { type: GraphQLBoolean },
   },
@@ -84,17 +96,26 @@ const emailSchema = new GraphQLSchema({
   }),
 });
 
-function createSubscription(pubsub: SimplePubSub<Email>) {
+function createSubscription(
+  pubsub: SimplePubSub<Email>,
+  variableValues?: { readonly [variable: string]: unknown },
+  originalSubscribe: boolean = false,
+) {
   const document = parse(`
-    subscription ($priority: Int = 0) {
+    subscription ($priority: Int = 0, $shouldDefer: Boolean = false, $asyncResolver: Boolean = false) {
       importantEmail(priority: $priority) {
         email {
           from
           subject
+          ... @include(if: $asyncResolver) {
+            asyncSubject
+          }
         }
-        inbox {
-          unread
-          total
+        ... @defer(if: $shouldDefer) {
+          inbox {
+            unread
+            total
+          }
         }
       }
     }
@@ -124,7 +145,12 @@ function createSubscription(pubsub: SimplePubSub<Email>) {
     }),
   };
 
-  return subscribe({ schema: emailSchema, document, rootValue: data });
+  return (originalSubscribe ? subscribe : experimentalSubscribeIncrementally)({
+    schema: emailSchema,
+    document,
+    rootValue: data,
+    variableValues,
+  });
 }
 
 const DummyQueryType = new GraphQLObjectType({
@@ -549,6 +575,45 @@ describe('Subscription Publish Phase', () => {
     expect(await payload2).to.deep.equal(expectedPayload);
   });
 
+  it('produces a payload when queried fields are async', async () => {
+    const pubsub = new SimplePubSub<Email>();
+
+    const subscription = createSubscription(pubsub, { asyncResolver: true });
+    assert(isAsyncIterable(subscription));
+
+    expect(
+      pubsub.emit({
+        from: 'yuzhi@graphql.org',
+        subject: 'Alright',
+        message: 'Tests are good',
+        unread: true,
+      }),
+    ).to.equal(true);
+
+    expect(await subscription.next()).to.deep.equal({
+      done: false,
+      value: {
+        data: {
+          importantEmail: {
+            email: {
+              from: 'yuzhi@graphql.org',
+              subject: 'Alright',
+              asyncSubject: 'Alright',
+            },
+            inbox: {
+              unread: 1,
+              total: 2,
+            },
+          },
+        },
+      },
+    });
+    expect(await subscription.return()).to.deep.equal({
+      done: true,
+      value: undefined,
+    });
+  });
+
   it('produces a payload per subscription event', async () => {
     const pubsub = new SimplePubSub<Email>();
     const subscription = createSubscription(pubsub);
@@ -633,6 +698,213 @@ describe('Subscription Publish Phase', () => {
 
     // Awaiting a subscription after closing it results in completed results.
     expect(await subscription.next()).to.deep.equal({
+      done: true,
+      value: undefined,
+    });
+  });
+
+  it('produces additional payloads for subscriptions with @defer', async () => {
+    const pubsub = new SimplePubSub<Email>();
+    const subscription = await createSubscription(pubsub, {
+      shouldDefer: true,
+    });
+    assert(isAsyncIterable(subscription));
+    // Wait for the next subscription payload.
+    const payload = subscription.next();
+
+    // A new email arrives!
+    expect(
+      pubsub.emit({
+        from: 'yuzhi@graphql.org',
+        subject: 'Alright',
+        message: 'Tests are good',
+        unread: true,
+      }),
+    ).to.equal(true);
+
+    // The previously waited on payload now has a value.
+    expect(await payload).to.deep.equal({
+      done: false,
+      value: {
+        data: {
+          importantEmail: {
+            email: {
+              from: 'yuzhi@graphql.org',
+              subject: 'Alright',
+            },
+          },
+        },
+        hasNext: true,
+      },
+    });
+
+    // Wait for the next payload from @defer
+    expect(await subscription.next()).to.deep.equal({
+      done: false,
+      value: {
+        incremental: [
+          {
+            data: {
+              inbox: {
+                unread: 1,
+                total: 2,
+              },
+            },
+            path: ['importantEmail'],
+          },
+        ],
+        hasNext: false,
+      },
+    });
+
+    // Another new email arrives, after all incrementally delivered payloads are received.
+    expect(
+      pubsub.emit({
+        from: 'hyo@graphql.org',
+        subject: 'Tools',
+        message: 'I <3 making things',
+        unread: true,
+      }),
+    ).to.equal(true);
+
+    // The next waited on payload will have a value.
+    expect(await subscription.next()).to.deep.equal({
+      done: false,
+      value: {
+        data: {
+          importantEmail: {
+            email: {
+              from: 'hyo@graphql.org',
+              subject: 'Tools',
+            },
+          },
+        },
+        hasNext: true,
+      },
+    });
+
+    // Another new email arrives, before the incrementally delivered payloads from the last email was received.
+    expect(
+      pubsub.emit({
+        from: 'adam@graphql.org',
+        subject: 'Important',
+        message: 'Read me please',
+        unread: true,
+      }),
+    ).to.equal(true);
+
+    // Deferred payload from previous event is received.
+    expect(await subscription.next()).to.deep.equal({
+      done: false,
+      value: {
+        incremental: [
+          {
+            data: {
+              inbox: {
+                unread: 2,
+                total: 3,
+              },
+            },
+            path: ['importantEmail'],
+          },
+        ],
+        hasNext: false,
+      },
+    });
+
+    // Next payload from last event
+    expect(await subscription.next()).to.deep.equal({
+      done: false,
+      value: {
+        data: {
+          importantEmail: {
+            email: {
+              from: 'adam@graphql.org',
+              subject: 'Important',
+            },
+          },
+        },
+        hasNext: true,
+      },
+    });
+
+    // The client disconnects before the deferred payload is consumed.
+    expect(await subscription.return()).to.deep.equal({
+      done: true,
+      value: undefined,
+    });
+
+    // Awaiting a subscription after closing it results in completed results.
+    expect(await subscription.next()).to.deep.equal({
+      done: true,
+      value: undefined,
+    });
+  });
+
+  it('original subscribe function returns errors with @defer', async () => {
+    const pubsub = new SimplePubSub<Email>();
+    const subscription = await createSubscription(
+      pubsub,
+      {
+        shouldDefer: true,
+      },
+      true,
+    );
+    assert(isAsyncIterable(subscription));
+    // Wait for the next subscription payload.
+    const payload = subscription.next();
+
+    // A new email arrives!
+    expect(
+      pubsub.emit({
+        from: 'yuzhi@graphql.org',
+        subject: 'Alright',
+        message: 'Tests are good',
+        unread: true,
+      }),
+    ).to.equal(true);
+
+    const errorPayload = {
+      done: false,
+      value: {
+        errors: [
+          {
+            message:
+              'Executing this GraphQL operation would unexpectedly produce multiple payloads (due to @defer or @stream directive)',
+          },
+        ],
+      },
+    };
+
+    // The previously waited on payload now has a value.
+    expectJSON(await payload).toDeepEqual(errorPayload);
+
+    // Wait for the next payload from @defer
+    expectJSON(await subscription.next()).toDeepEqual(errorPayload);
+
+    // Another new email arrives, after all incrementally delivered payloads are received.
+    expect(
+      pubsub.emit({
+        from: 'hyo@graphql.org',
+        subject: 'Tools',
+        message: 'I <3 making things',
+        unread: true,
+      }),
+    ).to.equal(true);
+
+    // The next waited on payload will have a value.
+    expectJSON(await subscription.next()).toDeepEqual(errorPayload);
+    // The next waited on payload will have a value.
+    expectJSON(await subscription.next()).toDeepEqual(errorPayload);
+
+    // The client disconnects before the deferred payload is consumed.
+    expectJSON(await subscription.return()).toDeepEqual({
+      done: true,
+      value: undefined,
+    });
+
+    // Awaiting a subscription after closing it results in completed results.
+    expectJSON(await subscription.next()).toDeepEqual({
       done: true,
       value: undefined,
     });

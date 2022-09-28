@@ -1,11 +1,10 @@
-import * as assert from 'node:assert';
-import * as cp from 'node:child_process';
-import * as fs from 'node:fs';
-import * as os from 'node:os';
-import * as path from 'node:path';
-import * as url from 'node:url';
+import assert from 'node:assert';
+import cp from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import url from 'node:url';
 
-import { exec, execOutput, localRepoPath } from './utils';
+import { git, localRepoPath, makeTmpDir, npm } from './utils.js';
 
 const NS_PER_SEC = 1e9;
 const LOCAL = 'local';
@@ -35,18 +34,13 @@ interface BenchmarkProject {
 function prepareBenchmarkProjects(
   revisionList: ReadonlyArray<string>,
 ): Array<BenchmarkProject> {
-  const tmpDir = path.join(os.tmpdir(), 'graphql-js-benchmark');
-  fs.rmSync(tmpDir, { recursive: true, force: true });
-  fs.mkdirSync(tmpDir);
-
-  const setupDir = path.join(tmpDir, 'setup');
-  fs.mkdirSync(setupDir);
+  const { tmpDirPath } = makeTmpDir('graphql-js-benchmark');
 
   return revisionList.map((revision) => {
     console.log(`🍳  Preparing ${revision}...`);
-    const projectPath = path.join(setupDir, revision);
+    const projectPath = tmpDirPath('setup', revision);
     fs.rmSync(projectPath, { recursive: true, force: true });
-    fs.mkdirSync(projectPath);
+    fs.mkdirSync(projectPath, { recursive: true });
 
     fs.cpSync(localRepoPath('benchmark'), path.join(projectPath, 'benchmark'), {
       recursive: true,
@@ -63,7 +57,7 @@ function prepareBenchmarkProjects(
       path.join(projectPath, 'package.json'),
       JSON.stringify(packageJSON, null, 2),
     );
-    exec('npm --quiet install --ignore-scripts ', { cwd: projectPath });
+    npm({ cwd: projectPath, quiet: true }).install('--ignore-scripts');
 
     return { revision, projectPath };
   });
@@ -71,37 +65,35 @@ function prepareBenchmarkProjects(
   function prepareNPMPackage(revision: string) {
     if (revision === LOCAL) {
       const repoDir = localRepoPath();
-      const archivePath = path.join(tmpDir, 'graphql-local.tgz');
+      const archivePath = tmpDirPath('graphql-local.tgz');
       fs.renameSync(buildNPMArchive(repoDir), archivePath);
       return archivePath;
     }
 
     // Returns the complete git hash for a given git revision reference.
-    const hash = execOutput(`git rev-parse "${revision}"`);
+    const hash = git().revParse(revision);
 
-    const archivePath = path.join(tmpDir, `graphql-${hash}.tgz`);
+    const archivePath = tmpDirPath(`graphql-${hash}.tgz`);
     if (fs.existsSync(archivePath)) {
       return archivePath;
     }
 
-    const repoDir = path.join(tmpDir, hash);
+    const repoDir = tmpDirPath(hash);
     fs.rmSync(repoDir, { recursive: true, force: true });
     fs.mkdirSync(repoDir);
-    exec(`git clone --quiet "${localRepoPath()}" "${repoDir}"`);
-    exec(`git checkout --quiet --detach "${hash}"`, { cwd: repoDir });
-    exec('npm --quiet ci --ignore-scripts', { cwd: repoDir });
+    git({ quiet: true }).clone(localRepoPath(), repoDir);
+    git({ cwd: repoDir, quiet: true }).checkout('--detach', hash);
+    npm({ cwd: repoDir, quiet: true }).ci('--ignore-scripts');
     fs.renameSync(buildNPMArchive(repoDir), archivePath);
     fs.rmSync(repoDir, { recursive: true });
     return archivePath;
   }
 
   function buildNPMArchive(repoDir: string) {
-    exec('npm --quiet run build:npm', { cwd: repoDir });
+    npm({ cwd: repoDir, quiet: true }).run('build:npm');
 
     const distDir = path.join(repoDir, 'npmDist');
-    const archiveName = execOutput(`npm --quiet pack ${distDir}`, {
-      cwd: repoDir,
-    });
+    const archiveName = npm({ cwd: repoDir, quiet: true }).pack(distDir);
     return path.join(repoDir, archiveName);
   }
 }

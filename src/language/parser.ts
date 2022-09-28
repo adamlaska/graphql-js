@@ -1,7 +1,7 @@
-import type { Maybe } from '../jsutils/Maybe';
+import type { Maybe } from '../jsutils/Maybe.js';
 
-import type { GraphQLError } from '../error/GraphQLError';
-import { syntaxError } from '../error/syntaxError';
+import type { GraphQLError } from '../error/GraphQLError.js';
+import { syntaxError } from '../error/syntaxError.js';
 
 import type {
   ArgumentNode,
@@ -63,13 +63,13 @@ import type {
   ValueNode,
   VariableDefinitionNode,
   VariableNode,
-} from './ast';
-import { Location, OperationTypeNode } from './ast';
-import { DirectiveLocation } from './directiveLocation';
-import { Kind } from './kinds';
-import { isPunctuatorTokenKind, Lexer } from './lexer';
-import { isSource, Source } from './source';
-import { TokenKind } from './tokenKind';
+} from './ast.js';
+import { Location, OperationTypeNode } from './ast.js';
+import { DirectiveLocation } from './directiveLocation.js';
+import { Kind } from './kinds.js';
+import { isPunctuatorTokenKind, Lexer } from './lexer.js';
+import { isSource, Source } from './source.js';
+import { TokenKind } from './tokenKind.js';
 
 /**
  * Configuration options to control parser behavior
@@ -1638,7 +1638,7 @@ export class Parser {
         throw syntaxError(
           this._lexer.source,
           token.start,
-          `Document contains more that ${maxTokens} tokens. Parsing aborted.`,
+          `Document contains more than ${maxTokens} tokens. Parsing aborted.`,
         );
       }
     }

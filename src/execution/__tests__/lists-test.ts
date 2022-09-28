@@ -1,21 +1,25 @@
 import { expect } from 'chai';
 import { describe, it } from 'mocha';
 
-import { expectJSON } from '../../__testUtils__/expectJSON';
+import { expectJSON } from '../../__testUtils__/expectJSON.js';
 
-import type { PromiseOrValue } from '../../jsutils/PromiseOrValue';
+import type { PromiseOrValue } from '../../jsutils/PromiseOrValue.js';
 
-import { parse } from '../../language/parser';
+import { parse } from '../../language/parser.js';
 
-import type { GraphQLFieldResolver } from '../../type/definition';
-import { GraphQLList, GraphQLObjectType } from '../../type/definition';
-import { GraphQLString } from '../../type/scalars';
-import { GraphQLSchema } from '../../type/schema';
+import type { GraphQLFieldResolver } from '../../type/definition.js';
+import {
+  GraphQLList,
+  GraphQLNonNull,
+  GraphQLObjectType,
+} from '../../type/definition.js';
+import { GraphQLString } from '../../type/scalars.js';
+import { GraphQLSchema } from '../../type/schema.js';
 
-import { buildSchema } from '../../utilities/buildASTSchema';
+import { buildSchema } from '../../utilities/buildASTSchema.js';
 
-import type { ExecutionResult } from '../execute';
-import { execute, executeSync } from '../execute';
+import type { ExecutionResult } from '../execute.js';
+import { execute, executeSync } from '../execute.js';
 
 describe('Execute: Accepts any iterable as list value', () => {
   function complete(rootValue: unknown) {
@@ -101,7 +105,7 @@ describe('Execute: Accepts async iterables as list value', () => {
                 name: 'ObjectWrapper',
                 fields: {
                   index: {
-                    type: GraphQLString,
+                    type: new GraphQLNonNull(GraphQLString),
                     resolve,
                   },
                 },
@@ -202,7 +206,7 @@ describe('Execute: Accepts async iterables as list value', () => {
         return Promise.resolve(index);
       }),
     ).toDeepEqual({
-      data: { listField: [{ index: '0' }, { index: '1' }, { index: null }] },
+      data: { listField: [{ index: '0' }, { index: '1' }, null] },
       errors: [
         {
           message: 'bad',

@@ -1,14 +1,18 @@
-import * as assert from 'node:assert';
-import * as fs from 'node:fs';
-import * as os from 'node:os';
-import * as path from 'node:path';
+import assert from 'node:assert';
+import childProcess from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
 
-import { exec, execOutput, localRepoPath, writeGeneratedFile } from './utils';
+import {
+  git,
+  localRepoPath,
+  makeTmpDir,
+  npm,
+  writeGeneratedFile,
+} from './utils.js';
 
 const LOCAL = 'local';
-const tmpDir = path.join(os.tmpdir(), 'graphql-js-npm-diff');
-fs.rmSync(tmpDir, { recursive: true, force: true });
-fs.mkdirSync(tmpDir);
+const { tmpDirPath } = makeTmpDir('graphql-js-npm-diff');
 
 const args = process.argv.slice(2);
 let [fromRevision, toRevision] = args;
@@ -27,7 +31,7 @@ console.log(`📦 Building NPM package for ${toRevision}...`);
 const toPackage = prepareNPMPackage(toRevision);
 
 console.log('➖➕ Generating diff...');
-const diff = execOutput(`npm diff --diff=${fromPackage} --diff=${toPackage}`);
+const diff = npm().diff('--diff', fromPackage, '--diff', toPackage);
 
 if (diff === '') {
   console.log('No changes found!');
@@ -78,19 +82,19 @@ function generateReport(diffString: string): string {
 
 function prepareNPMPackage(revision: string): string {
   if (revision === LOCAL) {
-    exec('npm --quiet run build:npm', { cwd: localRepoPath() });
+    npm({ cwd: localRepoPath(), quiet: true }).run('build:npm');
     return localRepoPath('npmDist');
   }
 
   // Returns the complete git hash for a given git revision reference.
-  const hash = execOutput(`git rev-parse "${revision}"`);
+  const hash = git().revParse(revision);
   assert(hash != null);
 
-  const repoDir = path.join(tmpDir, hash);
+  const repoDir = tmpDirPath(hash);
   fs.rmSync(repoDir, { recursive: true, force: true });
   fs.mkdirSync(repoDir);
-  exec(`git archive "${hash}" | tar -xC "${repoDir}"`);
-  exec('npm --quiet ci --ignore-scripts', { cwd: repoDir });
-  exec('npm --quiet run build:npm', { cwd: repoDir });
+  childProcess.execSync(`git archive "${hash}" | tar -xC "${repoDir}"`);
+  npm({ cwd: repoDir, quiet: true }).ci('--ignore-scripts');
+  npm({ cwd: repoDir, quiet: true }).run('build:npm');
   return path.join(repoDir, 'npmDist');
 }

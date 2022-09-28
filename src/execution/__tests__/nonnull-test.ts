@@ -1,18 +1,20 @@
 import { expect } from 'chai';
 import { describe, it } from 'mocha';
 
-import { expectJSON } from '../../__testUtils__/expectJSON';
+import { expectJSON } from '../../__testUtils__/expectJSON.js';
 
-import { parse } from '../../language/parser';
+import type { PromiseOrValue } from '../../jsutils/PromiseOrValue.js';
 
-import { GraphQLNonNull, GraphQLObjectType } from '../../type/definition';
-import { GraphQLString } from '../../type/scalars';
-import { GraphQLSchema } from '../../type/schema';
+import { parse } from '../../language/parser.js';
 
-import { buildSchema } from '../../utilities/buildASTSchema';
+import { GraphQLNonNull, GraphQLObjectType } from '../../type/definition.js';
+import { GraphQLString } from '../../type/scalars.js';
+import { GraphQLSchema } from '../../type/schema.js';
 
-import type { ExecutionResult } from '../execute';
-import { execute, executeSync } from '../execute';
+import { buildSchema } from '../../utilities/buildASTSchema.js';
+
+import type { ExecutionResult } from '../execute.js';
+import { execute, executeSync } from '../execute.js';
 
 const syncError = new Error('sync');
 const syncNonNullError = new Error('syncNonNull');
@@ -109,7 +111,7 @@ const schema = buildSchema(`
 function executeQuery(
   query: string,
   rootValue: unknown,
-): ExecutionResult | Promise<ExecutionResult> {
+): PromiseOrValue<ExecutionResult> {
   return execute({ schema, document: parse(query), rootValue });
 }
 
