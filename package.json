@@ -56,7 +56,7 @@
     "@docusaurus/core": "2.0.1",
     "@docusaurus/preset-classic": "2.0.1",
     "@mdx-js/react": "1.6.22",
-    "@stryker-mutator/core": "6.1.2",
+    "@stryker-mutator/core": "7.0.0",
     "@stryker-mutator/mocha-runner": "6.1.2",
     "@stryker-mutator/typescript-checker": "6.1.2",
     "@svgr/webpack": "6.3.1",
