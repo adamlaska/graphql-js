@@ -69,7 +69,7 @@
     "c8": "7.12.0",
     "chai": "4.3.6",
     "clsx": "1.2.1",
-    "cspell": "6.6.1",
+    "cspell": "8.2.0",
     "docusaurus-plugin-typedoc-api": "2.3.0",
     "eslint": "8.21.0",
     "eslint-plugin-import": "2.26.0",
