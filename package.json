@@ -71,7 +71,7 @@
     "clsx": "1.2.1",
     "cspell": "6.6.1",
     "docusaurus-plugin-typedoc-api": "2.3.0",
-    "eslint": "8.21.0",
+    "eslint": "8.26.0",
     "eslint-plugin-import": "2.26.0",
     "eslint-plugin-internal-rules": "file:./resources/eslint-internal-rules",
     "eslint-plugin-node": "11.1.0",
