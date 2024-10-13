@@ -562,10 +562,9 @@ export interface GraphQLScalarTypeExtensions {
  * Scalars (or Enums) and are defined with a name and a series of functions
  * used to parse input from ast or variables and to ensure validity.
  *
- * If a type's serialize function does not return a value (i.e. it returns
- * `undefined`) then an error will be raised and a `null` value will be returned
- * in the response. If the serialize function returns `null`, then no error will
- * be included in the response.
+ * If a type's serialize function returns `null` or does not return a value
+ * (i.e. it returns `undefined`) then an error will be raised and a `null`
+ * value will be returned in the response. It is always better to validate
  *
  * Example:
  *
@@ -573,9 +572,16 @@ export interface GraphQLScalarTypeExtensions {
  * const OddType = new GraphQLScalarType({
  *   name: 'Odd',
  *   serialize(value) {
- *     if (value % 2 === 1) {
- *       return value;
+ *     if (!Number.isFinite(value)) {
+ *       throw new Error(
+ *         `Scalar "Odd" cannot represent "${value}" since it is not a finite number.`,
+ *       );
  *     }
+ *
+ *     if (value % 2 === 0) {
+ *       throw new Error(`Scalar "Odd" cannot represent "${value}" since it is even.`);
+ *     }
+ *     return value;
  *   }
  * });
  * ```
@@ -1366,9 +1372,12 @@ export class GraphQLEnumType /* <T> */ {
   astNode: Maybe<EnumTypeDefinitionNode>;
   extensionASTNodes: ReadonlyArray<EnumTypeExtensionNode>;
 
-  private _values: ReadonlyArray<GraphQLEnumValue /* <T> */>;
-  private _valueLookup: ReadonlyMap<any /* T */, GraphQLEnumValue>;
-  private _nameLookup: ObjMap<GraphQLEnumValue>;
+  private _values:
+    | ReadonlyArray<GraphQLEnumValue /* <T> */>
+    | (() => GraphQLEnumValueConfigMap);
+
+  private _valueLookup: ReadonlyMap<any /* T */, GraphQLEnumValue> | null;
+  private _nameLookup: ObjMap<GraphQLEnumValue> | null;
 
   constructor(config: Readonly<GraphQLEnumTypeConfig /* <T> */>) {
     this.name = assertName(config.name);
@@ -1377,11 +1386,12 @@ export class GraphQLEnumType /* <T> */ {
     this.astNode = config.astNode;
     this.extensionASTNodes = config.extensionASTNodes ?? [];
 
-    this._values = defineEnumValues(this.name, config.values);
-    this._valueLookup = new Map(
-      this._values.map((enumValue) => [enumValue.value, enumValue]),
-    );
-    this._nameLookup = keyMap(this._values, (value) => value.name);
+    this._values =
+      typeof config.values === 'function'
+        ? config.values
+        : defineEnumValues(this.name, config.values);
+    this._valueLookup = null;
+    this._nameLookup = null;
   }
 
   get [Symbol.toStringTag]() {
@@ -1389,14 +1399,25 @@ export class GraphQLEnumType /* <T> */ {
   }
 
   getValues(): ReadonlyArray<GraphQLEnumValue /* <T> */> {
+    if (typeof this._values === 'function') {
+      this._values = defineEnumValues(this.name, this._values());
+    }
     return this._values;
   }
 
   getValue(name: string): Maybe<GraphQLEnumValue> {
+    if (this._nameLookup === null) {
+      this._nameLookup = keyMap(this.getValues(), (value) => value.name);
+    }
     return this._nameLookup[name];
   }
 
   serialize(outputValue: unknown /* T */): Maybe<string> {
+    if (this._valueLookup === null) {
+      this._valueLookup = new Map(
+        this.getValues().map((enumValue) => [enumValue.value, enumValue]),
+      );
+    }
     const enumValue = this._valueLookup.get(outputValue);
     if (enumValue === undefined) {
       throw new GraphQLError(
@@ -1435,7 +1456,7 @@ export class GraphQLEnumType /* <T> */ {
       throw new GraphQLError(
         `Enum "${this.name}" cannot represent non-enum value: ${valueStr}.` +
           didYouMeanEnumValue(this, valueStr),
-        valueNode,
+        { nodes: valueNode },
       );
     }
 
@@ -1445,7 +1466,7 @@ export class GraphQLEnumType /* <T> */ {
       throw new GraphQLError(
         `Value "${valueStr}" does not exist in "${this.name}" enum.` +
           didYouMeanEnumValue(this, valueStr),
-        valueNode,
+        { nodes: valueNode },
       );
     }
     return enumValue.value;
@@ -1521,13 +1542,14 @@ function defineEnumValues(
 export interface GraphQLEnumTypeConfig {
   name: string;
   description?: Maybe<string>;
-  values: GraphQLEnumValueConfigMap /* <T> */;
+  values: ThunkObjMap<GraphQLEnumValueConfig /* <T> */>;
   extensions?: Maybe<Readonly<GraphQLEnumTypeExtensions>>;
   astNode?: Maybe<EnumTypeDefinitionNode>;
   extensionASTNodes?: Maybe<ReadonlyArray<EnumTypeExtensionNode>>;
 }
 
 interface GraphQLEnumTypeNormalizedConfig extends GraphQLEnumTypeConfig {
+  values: ObjMap<GraphQLEnumValueConfig /* <T> */>;
   extensions: Readonly<GraphQLEnumTypeExtensions>;
   extensionASTNodes: ReadonlyArray<EnumTypeExtensionNode>;
 }
@@ -1605,6 +1627,7 @@ export class GraphQLInputObjectType {
   extensions: Readonly<GraphQLInputObjectTypeExtensions>;
   astNode: Maybe<InputObjectTypeDefinitionNode>;
   extensionASTNodes: ReadonlyArray<InputObjectTypeExtensionNode>;
+  isOneOf: boolean;
 
   private _fields: ThunkObjMap<GraphQLInputField>;
 
@@ -1614,6 +1637,7 @@ export class GraphQLInputObjectType {
     this.extensions = toObjMap(config.extensions);
     this.astNode = config.astNode;
     this.extensionASTNodes = config.extensionASTNodes ?? [];
+    this.isOneOf = config.isOneOf ?? false;
 
     this._fields = defineInputFieldMap.bind(undefined, config);
   }
@@ -1646,6 +1670,7 @@ export class GraphQLInputObjectType {
       extensions: this.extensions,
       astNode: this.astNode,
       extensionASTNodes: this.extensionASTNodes,
+      isOneOf: this.isOneOf,
     };
   }
 
@@ -1691,6 +1716,7 @@ export interface GraphQLInputObjectTypeConfig {
   extensions?: Maybe<Readonly<GraphQLInputObjectTypeExtensions>>;
   astNode?: Maybe<InputObjectTypeDefinitionNode>;
   extensionASTNodes?: Maybe<ReadonlyArray<InputObjectTypeExtensionNode>>;
+  isOneOf?: boolean;
 }
 
 interface GraphQLInputObjectTypeNormalizedConfig
