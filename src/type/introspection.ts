@@ -323,6 +323,14 @@ export const __Type: GraphQLObjectType = new GraphQLObjectType({
         type: __Type,
         resolve: (type) => ('ofType' in type ? type.ofType : undefined),
       },
+      isOneOf: {
+        type: GraphQLBoolean,
+        resolve: (type) => {
+          if (isInputObjectType(type)) {
+            return type.isOneOf;
+          }
+        },
+      },
     } as GraphQLFieldConfigMap<GraphQLType, unknown>),
 });
 
@@ -435,7 +443,7 @@ export const __EnumValue: GraphQLObjectType = new GraphQLObjectType({
     } as GraphQLFieldConfigMap<GraphQLEnumValue, unknown>),
 });
 
-export enum TypeKind {
+enum TypeKind {
   SCALAR = 'SCALAR',
   OBJECT = 'OBJECT',
   INTERFACE = 'INTERFACE',
@@ -445,6 +453,7 @@ export enum TypeKind {
   LIST = 'LIST',
   NON_NULL = 'NON_NULL',
 }
+export { TypeKind };
 
 export const __TypeKind: GraphQLEnumType = new GraphQLEnumType({
   name: '__TypeKind',

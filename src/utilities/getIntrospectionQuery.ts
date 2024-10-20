@@ -32,6 +32,12 @@ export interface IntrospectionOptions {
    * Default: false
    */
   inputValueDeprecation?: boolean;
+
+  /**
+   * Whether target GraphQL server supports `@oneOf` input objects.
+   * Default: false
+   */
+  oneOf?: boolean;
 }
 
 /**
@@ -45,6 +51,7 @@ export function getIntrospectionQuery(options?: IntrospectionOptions): string {
     directiveIsRepeatable: false,
     schemaDescription: false,
     inputValueDeprecation: false,
+    oneOf: false,
     ...options,
   };
 
@@ -62,14 +69,15 @@ export function getIntrospectionQuery(options?: IntrospectionOptions): string {
   function inputDeprecation(str: string) {
     return optionsWithDefault.inputValueDeprecation ? str : '';
   }
+  const oneOf = optionsWithDefault.oneOf ? 'isOneOf' : '';
 
   return `
     query IntrospectionQuery {
       __schema {
         ${schemaDescription}
-        queryType { name }
-        mutationType { name }
-        subscriptionType { name }
+        queryType { name kind }
+        mutationType { name kind }
+        subscriptionType { name kind }
         types {
           ...FullType
         }
@@ -90,6 +98,7 @@ export function getIntrospectionQuery(options?: IntrospectionOptions): string {
       name
       ${descriptions}
       ${specifiedByUrl}
+      ${oneOf}
       fields(includeDeprecated: true) {
         name
         ${descriptions}
@@ -152,6 +161,14 @@ export function getIntrospectionQuery(options?: IntrospectionOptions): string {
                   ofType {
                     kind
                     name
+                    ofType {
+                      kind
+                      name
+                      ofType {
+                        kind
+                        name
+                      }
+                    }
                   }
                 }
               }
@@ -251,6 +268,7 @@ export interface IntrospectionInputObjectType {
   readonly name: string;
   readonly description?: Maybe<string>;
   readonly inputFields: ReadonlyArray<IntrospectionInputValue>;
+  readonly isOneOf: boolean;
 }
 
 export interface IntrospectionListTypeRef<

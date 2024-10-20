@@ -20,7 +20,7 @@ export interface GraphQLErrorExtensions {
   [attributeName: string]: unknown;
 }
 
-export interface GraphQLErrorArgs {
+export interface GraphQLErrorOptions {
   nodes?: ReadonlyArray<ASTNode> | ASTNode | null;
   source?: Maybe<Source>;
   positions?: Maybe<ReadonlyArray<number>>;
@@ -30,17 +30,19 @@ export interface GraphQLErrorArgs {
 }
 
 type BackwardsCompatibleArgs =
-  | [args?: GraphQLErrorArgs]
+  | [options?: GraphQLErrorOptions]
   | [
-      nodes?: GraphQLErrorArgs['nodes'],
-      source?: GraphQLErrorArgs['source'],
-      positions?: GraphQLErrorArgs['positions'],
-      path?: GraphQLErrorArgs['path'],
-      originalError?: GraphQLErrorArgs['originalError'],
-      extensions?: GraphQLErrorArgs['extensions'],
+      nodes?: GraphQLErrorOptions['nodes'],
+      source?: GraphQLErrorOptions['source'],
+      positions?: GraphQLErrorOptions['positions'],
+      path?: GraphQLErrorOptions['path'],
+      originalError?: GraphQLErrorOptions['originalError'],
+      extensions?: GraphQLErrorOptions['extensions'],
     ];
 
-function toNormalizedArgs(args: BackwardsCompatibleArgs): GraphQLErrorArgs {
+function toNormalizedOptions(
+  args: BackwardsCompatibleArgs,
+): GraphQLErrorOptions {
   const firstArg = args[0];
   if (firstArg == null || 'kind' in firstArg || 'length' in firstArg) {
     return {
@@ -111,8 +113,9 @@ export class GraphQLError extends Error {
    */
   readonly extensions: GraphQLErrorExtensions;
 
+  constructor(message: string, options?: GraphQLErrorOptions);
   /**
-   * @deprecated Please use the `GraphQLErrorArgs` constructor overload instead.
+   * @deprecated Please use the `GraphQLErrorOptions` constructor overload instead.
    */
   constructor(
     message: string,
@@ -123,10 +126,9 @@ export class GraphQLError extends Error {
     originalError?: Maybe<Error & { readonly extensions?: unknown }>,
     extensions?: Maybe<GraphQLErrorExtensions>,
   );
-  constructor(message: string, args?: GraphQLErrorArgs);
   constructor(message: string, ...rawArgs: BackwardsCompatibleArgs) {
     const { nodes, source, positions, path, originalError, extensions } =
-      toNormalizedArgs(rawArgs);
+      toNormalizedOptions(rawArgs);
     super(message);
 
     this.name = 'GraphQLError';
@@ -290,7 +292,7 @@ export function printError(error: GraphQLError): string {
  * Given a GraphQLError, format it according to the rules described by the
  * Response Format, Errors section of the GraphQL Specification.
  *
- * @deprecated Please use `error.toString` instead. Will be removed in v17
+ * @deprecated Please use `error.toJSON` instead. Will be removed in v17
  */
 export function formatError(error: GraphQLError): GraphQLFormattedError {
   return error.toJSON();

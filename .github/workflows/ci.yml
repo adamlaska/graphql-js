@@ -1,7 +1,9 @@
 name: CI
-on: [push, pull_request]
-env:
-  NODE_VERSION_USED_FOR_DEVELOPMENT: 17
+on:
+  workflow_call:
+    secrets:
+      codecov_token:
+        required: true
 jobs:
   lint:
     name: Lint source files
@@ -16,7 +18,7 @@ jobs:
         uses: actions/setup-node@v2
         with:
           cache: npm
-          node-version: ${{ env.NODE_VERSION_USED_FOR_DEVELOPMENT }}
+          node-version-file: '.node-version'
 
       - name: Install Dependencies
         run: npm ci --ignore-scripts
@@ -65,17 +67,13 @@ jobs:
         uses: actions/setup-node@v2
         with:
           cache: npm
-          node-version: ${{ env.NODE_VERSION_USED_FOR_DEVELOPMENT }}
+          node-version-file: '.node-version'
 
       - name: Install Dependencies
         run: npm ci --ignore-scripts
 
-      # Disabled due to https://github.com/milesj/docusaurus-plugin-typedoc-api/pull/19
-      # - name: Check that package-lock.json doesn't have conflicts
-      #  run: npm ls --depth 999
-
       - name: Run npm install
-        run: npm install --force --package-lock-only --ignore-scripts --engine-strict --strict-peer-deps
+        run: npm install --ignore-scripts --force --package-lock-only --engine-strict --strict-peer-deps
 
       - name: Check that package-lock.json is in sync with package.json
         run: git diff --exit-code package-lock.json
@@ -92,7 +90,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v2
         with:
-          node-version: ${{ env.NODE_VERSION_USED_FOR_DEVELOPMENT }}
+          node-version-file: '.node-version'
           # We install bunch of packages during integration tests without locking them
           # so we skip cache action to not pollute cache for other jobs.
 
@@ -115,7 +113,7 @@ jobs:
         uses: actions/setup-node@v2
         with:
           cache: npm
-          node-version: ${{ env.NODE_VERSION_USED_FOR_DEVELOPMENT }}
+          node-version-file: '.node-version'
 
       - name: Install Dependencies
         run: npm ci --ignore-scripts
@@ -136,7 +134,7 @@ jobs:
         uses: actions/setup-node@v2
         with:
           cache: npm
-          node-version: ${{ env.NODE_VERSION_USED_FOR_DEVELOPMENT }}
+          node-version-file: '.node-version'
 
       - name: Install Dependencies
         run: npm ci --ignore-scripts
@@ -146,10 +144,11 @@ jobs:
 
       - name: Upload coverage to Codecov
         if: ${{ always() }}
-        uses: codecov/codecov-action@v1
+        uses: codecov/codecov-action@v4
         with:
           file: ./coverage/coverage-final.json
           fail_ci_if_error: true
+          token: ${{ secrets.codecov_token }}
 
   test:
     name: Run tests on Node v${{ matrix.node_version_to_setup }}
@@ -175,75 +174,10 @@ jobs:
       - name: Run Tests
         run: npm run testonly
 
-  benchmark:
-    name: Run benchmark
+  build-npm-dist:
+    name: Build 'npmDist' artifact
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v2
-        with:
-          persist-credentials: false
-
-      - name: Deepen cloned repo
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: 'git fetch --depth=1 origin $BASE_SHA:refs/tags/BASE'
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v2
-        with:
-          cache: npm
-          node-version: ${{ env.NODE_VERSION_USED_FOR_DEVELOPMENT }}
-
-      - name: Install Dependencies
-        run: npm ci --ignore-scripts
-
-      - name: Run Benchmark
-        run: 'npm run benchmark -- --revs HEAD BASE'
-
-  diff-npm-package:
-    name: Diff content of NPM package
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v2
-        with:
-          persist-credentials: false
-
-      - name: Deepen cloned repo
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: 'git fetch --depth=1 origin $BASE_SHA:refs/tags/BASE'
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v2
-        with:
-          cache: npm
-          node-version: ${{ env.NODE_VERSION_USED_FOR_DEVELOPMENT }}
-
-      - name: Install Dependencies
-        run: npm ci --ignore-scripts
-
-      - name: Generate report
-        run: 'node resources/diff-npm-package.js BASE HEAD'
-
-      - name: Upload generated report
-        uses: actions/upload-artifact@v2
-        with:
-          name: npm-dist-diff.html
-          path: ./npm-dist-diff.html
-          if-no-files-found: ignore
-
-  deploy-to-npm-branch:
-    name: Deploy to `npm` branch
-    runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'push' &&
-      github.repository == 'graphql/graphql-js' &&
-      github.ref == 'refs/heads/main'
-    needs: [test, fuzz, lint, checkForCommonlyIgnoredFiles, integrationTests]
+    needs: [test, fuzz, lint, integrationTests]
     steps:
       - name: Checkout repo
         uses: actions/checkout@v2
@@ -254,7 +188,7 @@ jobs:
         uses: actions/setup-node@v2
         with:
           cache: npm
-          node-version: ${{ env.NODE_VERSION_USED_FOR_DEVELOPMENT }}
+          node-version-file: '.node-version'
 
       - name: Install Dependencies
         run: npm ci --ignore-scripts
@@ -262,20 +196,16 @@ jobs:
       - name: Build NPM package
         run: npm run build:npm
 
-      - name: Deploy to `npm` branch
-        uses: ./.github/actions/deploy-dir-as-branch
+      - name: Upload npmDist package
+        uses: actions/upload-artifact@v4
         with:
-          src_dir: npmDist
-          target_branch: npm
+          name: npmDist
+          path: ./npmDist
 
-  deploy-to-deno-branch:
-    name: Deploy to `deno` branch
+  build-deno-dist:
+    name: Build 'denoDist' artifact
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'push' &&
-      github.repository == 'graphql/graphql-js' &&
-      github.ref == 'refs/heads/main'
-    needs: [test, fuzz, lint, checkForCommonlyIgnoredFiles, integrationTests]
+    needs: [test, fuzz, lint, integrationTests]
     steps:
       - name: Checkout repo
         uses: actions/checkout@v2
@@ -285,8 +215,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v2
         with:
-          cache: npm
-          node-version: ${{ env.NODE_VERSION_USED_FOR_DEVELOPMENT }}
+          node-version-file: '.node-version'
 
       - name: Install Dependencies
         run: npm ci --ignore-scripts
@@ -294,29 +223,8 @@ jobs:
       - name: Build Deno package
         run: npm run build:deno
 
-      - name: Deploy to `deno` branch
-        uses: ./.github/actions/deploy-dir-as-branch
+      - name: Upload denoDist package
+        uses: actions/upload-artifact@v4
         with:
-          src_dir: denoDist
-          target_branch: deno
-
-  build-website:
-    name: Build website
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v2
-        with:
-          persist-credentials: false
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v2
-        with:
-          cache: npm
-          node-version: ${{ env.NODE_VERSION_USED_FOR_DEVELOPMENT }}
-
-      - name: Install Dependencies
-        run: npm ci --ignore-scripts
-
-      - name: Build Docs
-        run: npm run build:website
+          name: denoDist
+          path: ./denoDist

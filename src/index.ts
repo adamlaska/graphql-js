@@ -64,6 +64,7 @@ export {
   GraphQLSkipDirective,
   GraphQLDeprecatedDirective,
   GraphQLSpecifiedByDirective,
+  GraphQLOneOfDirective,
   // "Enum" of Type Kinds
   TypeKind,
   // Constant Deprecation Reason
@@ -318,6 +319,7 @@ export {
   defaultFieldResolver,
   defaultTypeResolver,
   responsePathAsArray,
+  getArgumentValues,
   getVariableValues,
   getDirectiveValues,
   subscribe,
@@ -338,6 +340,7 @@ export {
   ValidationContext,
   // All validation rules in the GraphQL Specification.
   specifiedRules,
+  recommendedRules,
   // Individual validation rules.
   ExecutableDefinitionsRule,
   FieldsOnCorrectTypeRule,
@@ -365,6 +368,7 @@ export {
   ValuesOfCorrectTypeRule,
   VariablesAreInputTypesRule,
   VariablesInAllowedPositionRule,
+  MaxIntrospectionDepthRule,
   // SDL-specific validation rules
   LoneSchemaDefinitionRule,
   UniqueOperationTypesRule,
@@ -391,6 +395,7 @@ export {
 } from './error/index';
 
 export type {
+  GraphQLErrorOptions,
   GraphQLFormattedError,
   GraphQLErrorExtensions,
 } from './error/index';
